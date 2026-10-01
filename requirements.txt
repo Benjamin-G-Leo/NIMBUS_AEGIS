@@ -1,0 +1,6 @@
+fastapi>=0.142
+uvicorn[standard]>=0.54
+openai>=3.22
+fastmcp>=4.0
+pydantic>=2.13
+httpx>=0.27
