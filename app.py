@@ -169,9 +169,10 @@ def _parse_llm_json(raw: str) -> Dict[str, int]:
 # Offline fallback — deterministic regex quantity extraction
 # --------------------------------------------------------------------------- #
 # Matches "<integer> <item>" for the canonical relief items the system tracks.
-# Extend the alternation below to recognize new standard items.
+# The quantity accepts a plain integer or a comma-grouped thousands form
+# (e.g. "1,000"). Extend the item alternation below for new standard items.
 _QUANTITY_RE = re.compile(
-    r"(?P<qty>\d+)\s+"
+    r"(?P<qty>\d{1,3}(?:,\d{3})+|\d+)\s+"
     r"(?P<item>(?:hygiene\s+kits?|pencil\s+boxes?|notebooks?|jackets?|blankets?))\b",
     re.IGNORECASE,
 )
@@ -181,7 +182,7 @@ def _regex_extract(text: str) -> Dict[str, int]:
     """Extract standard quantities from free text with a deterministic regex."""
     found: Dict[str, int] = {}
     for match in _QUANTITY_RE.finditer(text):
-        qty = int(match.group("qty"))
+        qty = int(match.group("qty").replace(",", ""))
         item = singular(match.group("item").lower())
         found[item] = found.get(item, 0) + qty
     return found
@@ -281,8 +282,8 @@ def build_triage_email(
     if source != "qwen":
         lines.append("")
         lines.append(
-            f"Note: automated extraction ran on the offline fallback ({reason}). "
-            "Please verify the quantities below."
+            f"Note: automated extraction ran on the offline fallback "
+            f"({reason.rstrip('.').strip()}). Please verify the quantities below."
         )
     lines.append("")
 
@@ -401,8 +402,28 @@ def run_reallocation(pledge_id: str, to_community: str, qty: int) -> Dict[str, A
             f"cannot move {qty} units; pledge {pledge_id!r} only holds "
             f"{source_pledge.get('qty', 0)}."
         )
-    if not str(to_community).strip():
+    target = str(to_community).strip()
+    if not target:
         raise ValueError("to_community must be a non-empty string.")
+
+    if target == source_pledge.get("to_community"):
+        # Re-targeting a pledge to the community it already targets is a no-op.
+        # Report it honestly instead of implying a move (core also guards this).
+        return {
+            "applied": {"pledge_id": pledge_id, "to_community": to_community, "qty": qty},
+            "no_op": True,
+            "state_after": {
+                "warehouse_stock": before.get("warehouse_stock", {}),
+                "community_needs": before.get("community_needs", {}),
+                "active_pledges": before.get("active_pledges", []),
+            },
+            "before": {"gaps": before_gaps, "clashes": before_clashes},
+            "after": {
+                "gaps": before_gaps,
+                "clashes": before_clashes,
+                "summary": f"No change: pledge {pledge_id!r} already targets {target!r}.",
+            },
+        }
 
     new_state = apply_reallocation(pledge_id, to_community, qty)
 
