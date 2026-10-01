@@ -1,0 +1,44 @@
+{
+  "warehouse_stock": {
+    "jacket": 900,
+    "blanket": 120,
+    "notebook": 40,
+    "hygiene kit": 25
+  },
+  "community_needs": {
+    "Riverside": {
+      "notebook": 400,
+      "pencil box": 200,
+      "hygiene kit": 150,
+      "blanket": 60
+    },
+    "Hillcrest": {
+      "notebook": 150,
+      "hygiene kit": 80,
+      "jacket": 0
+    }
+  },
+  "active_pledges": [
+    {
+      "pledge_id": "pledge_A",
+      "team": "Team A",
+      "item": "notebook",
+      "qty": 150,
+      "to_community": "Riverside"
+    },
+    {
+      "pledge_id": "pledge_B",
+      "team": "Team B",
+      "item": "notebook",
+      "qty": 200,
+      "to_community": "Riverside"
+    },
+    {
+      "pledge_id": "pledge_C",
+      "team": "Team C",
+      "item": "notebook",
+      "qty": 100,
+      "to_community": "Riverside"
+    }
+  ]
+}
