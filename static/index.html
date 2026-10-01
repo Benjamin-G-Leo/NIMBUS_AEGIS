@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ReliefMatch — Triage Console</title>
+  <style>
+    :root {
+      --bg: #0f1420; --panel: #182031; --panel-2: #1f2a3f; --border: #2a3550;
+      --text: #e8edf5; --muted: #9aa7bd; --accent: #4f8cff; --ok: #37c98a;
+      --warn: #f5b300; --danger: #ff5d5d;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+    header { padding: 18px 24px; background: linear-gradient(90deg, #16203a, #101a2e); border-bottom: 1px solid var(--border); }
+    header h1 { margin: 0; font-size: 1.35rem; }
+    header p { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
+    main { padding: 20px 24px; display: grid; gap: 20px; max-width: 1200px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+    .card h2 { margin: 0 0 12px; font-size: 1rem; color: var(--accent); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; }
+    .gap-ok { color: var(--ok); } .gap-warn { color: var(--warn); } .gap-high { color: var(--danger); }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+    .pill.high { background: rgba(255,93,93,.18); color: var(--danger); }
+    .pill.medium { background: rgba(245,179,0,.18); color: var(--warn); }
+    textarea, input { width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-size: 0.9rem; resize: vertical; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-top: 10px; }
+    .row > div { flex: 1 1 160px; }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+    button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 10px 16px; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    pre { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; white-space: pre-wrap; word-break: break-word; font-size: 0.85rem; margin: 10px 0 0; }
+    .meta { font-size: 0.8rem; color: var(--muted); margin-top: 8px; }
+    .src-qwen { color: var(--ok); } .src-fallback { color: var(--warn); }
+    .empty { color: var(--muted); font-style: italic; }
+    .toast { margin-top: 8px; font-size: 0.85rem; color: var(--danger); min-height: 1em; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ReliefMatch — Triage Console</h1>
+    <p>Live allocation grid · LLM offer extraction (OpenRouter / Qwen) · offline-safe fallback</p>
+  </header>
+
+  <main>
+    <div class="card" style="grid-column: 1 / -1;">
+      <h2>① Live Allocation Grid <span id="grid-updated" class="meta"></span></h2>
+      <div class="grid">
+        <div>
+          <h3 style="font-size:.9rem;color:var(--muted);margin:0 0 6px;">Item Gaps</h3>
+          <table id="gaps-table">
+            <thead><tr><th>Item</th><th>Need</th><th>Pledged</th><th>Stock</th><th>Gap</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div>
+          <h3 style="font-size:.9rem;color:var(--muted);margin:0 0 6px;">Distribution Clashes</h3>
+          <div id="clashes"><span class="empty">Loading…</span></div>
+        </div>
+      </div>
+      <button id="refresh-btn" style="margin-top:12px;">↻ Refresh grid</button>
+    </div>
+    <div class="card">
+      <h2>② Triage an Offer (LLM extraction)</h2>
+      <label for="offer-text">Paste the team's offer text block</label>
+      <textarea id="offer-text" rows="5" placeholder="e.g. &quot;Hello, our team can donate 200 notebooks, 50 jackets, and 100 hygiene kits to help the Riverside relief effort.&quot;"></textarea>
+      <div class="row">
+        <div>
+          <label for="offer-team">Team name (optional)</label>
+          <input id="offer-team" placeholder="Team A" />
+        </div>
+        <div style="flex:0 0 auto;">
+          <button id="triage-btn">Run Triage → Draft Email</button>
+        </div>
+      </div>
+      <div class="meta" id="triage-meta"></div>
+      <pre id="triage-email" class="empty">Drafted response email will appear here.</pre>
+      <div class="toast" id="triage-toast"></div>
+    </div>
+
+    <div class="card">
+      <h2>③ Apply a Reallocation</h2>
+      <div class="row">
+        <div><label for="re-pledge">Pledge ID</label><input id="re-pledge" placeholder="pledge_A" /></div>
+        <div><label for="re-community">Target Community</label><input id="re-community" placeholder="Hillcrest" /></div>
+        <div style="max-width:140px;"><label for="re-qty">Qty to move</label><input id="re-qty" type="number" min="1" placeholder="50" /></div>
+        <div style="flex:0 0 auto;"><button id="reallocate-btn">Apply Reallocation</button></div>
+      </div>
+      <pre id="reallocate-result" class="empty">Result will appear here.</pre>
+      <div class="toast" id="reallocate-toast"></div>
+    </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    async function api(path, opts) {
+      const res = await fetch(path, opts);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data && data.detail) || ("HTTP " + res.status));
+      return data;
+    }
+
+    function gapClass(gap) {
+      if (gap === 0) return "gap-ok";
+      if (gap > 30) return "gap-high";
+      return "gap-warn";
+    }
+
+    async function loadGrid() {
+      const updated = $("grid-updated");
+      try {
+        const g = await api("/api/grid_state");
+        const rows = Object.entries(g.item_breakdown || g.gaps || {}).map(([item, b]) => {
+          const rec = (typeof b === "object" && b !== null)
+            ? b : { need: 0, pledged: 0, stock: 0, gap: b };
+          return "<tr><td>" + item + "</td><td>" + (rec.need ?? 0) + "</td><td>" +
+            (rec.pledged ?? 0) + "</td><td>" + (rec.stock ?? 0) + "</td><td class=\"" +
+            gapClass(rec.gap ?? 0) + "\">" + (rec.gap ?? 0) + "</td></tr>";
+        }).join("");
+        $("gaps-table").querySelector("tbody").innerHTML =
+          rows || '<tr><td colspan="5" class="empty">No items.</td></tr>';
+
+        const clashes = g.clashes || [];
+        $("clashes").innerHTML = clashes.length
+          ? clashes.map((c) =>
+              '<div style="margin-bottom:8px;"><span class="pill ' + c.severity.toLowerCase() + '">' +
+              c.severity + "</span> <strong>" + c.item + "</strong> @ " + c.community +
+              " — over-pledged by <b>" + c.overage + "</b>" +
+              (c.recommendation
+                ? '<div class="meta">↳ move ' + c.recommendation.qty + " to " +
+                  c.recommendation.to_community + " (" + c.recommendation.pledge_id + ")</div>"
+                : '<div class="meta">↳ no safe reallocation available</div>') +
+              "</div>").join("")
+          : '<span class="empty">No clashes detected. All pledges within need.</span>';
+
+        updated.textContent = "Updated " + new Date().toLocaleTimeString();
+      } catch (e) {
+        updated.textContent = "";
+        $("clashes").innerHTML = '<span class="empty">Failed to load grid: ' + e.message + "</span>";
+      }
+    }
+
+    async function runTriage() {
+      const text = $("offer-text").value.trim();
+      if (!text) { $("triage-toast").textContent = "Paste an offer first."; return; }
+      const btn = $("triage-btn");
+      btn.disabled = true; $("triage-toast").textContent = "";
+      try {
+        const r = await api("/api/triage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, team: $("offer-team").value.trim() || null }),
+        });
+        const src = r.source === "qwen"
+          ? '<span class="src-qwen">Qwen (LLM)</span>'
+          : '<span class="src-fallback">Offline regex fallback</span>';
+        $("triage-meta").innerHTML =
+          "Extraction: <code>" + JSON.stringify(r.extraction) + "</code> · Source: " + src;
+        $("triage-email").textContent = r.drafted_email;
+      } catch (e) {
+        $("triage-toast").textContent = "Triage failed: " + e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function runReallocate() {
+      const payload = {
+        pledge_id: $("re-pledge").value.trim(),
+        to_community: $("re-community").value.trim(),
+        qty: parseInt($("re-qty").value, 10),
+      };
+      if (!payload.pledge_id || !payload.to_community || !(payload.qty > 0)) {
+        $("reallocate-toast").textContent = "Fill pledge_id, to_community, and a positive qty.";
+        return;
+      }
+      const btn = $("reallocate-btn");
+      btn.disabled = true; $("reallocate-toast").textContent = "";
+      try {
+        const r = await api("/api/reallocate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        $("reallocate-result").textContent =
+          "Applied: " + JSON.stringify(payload) + "\n\n" +
+          "Gaps before: " + JSON.stringify(r.before.gaps) + "\n" +
+          "Gaps after:  " + JSON.stringify(r.after.gaps) + "\n\n" +
+          "Remaining clashes:\n" + (r.after.clashes.length
+            ? r.after.clashes.map((c) => "  " + c.severity + " " + c.item + " @ " + c.community + " (+" + c.overage + ")").join("\n")
+            : "  none") + "\n\n" + r.after.summary;
+        loadGrid();
+      } catch (e) {
+        $("reallocate-toast").textContent = "Reallocation failed: " + e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    $("refresh-btn").addEventListener("click", loadGrid);
+    $("triage-btn").addEventListener("click", runTriage);
+    $("reallocate-btn").addEventListener("click", runReallocate);
+    loadGrid();
+  </script>
+
+  </main>
+</body>
+
+</html>
